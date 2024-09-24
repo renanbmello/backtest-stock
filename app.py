@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from flask_cors import CORS
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "http://localhost:3000"}})
 
 # Parâmetros de filtro padrão
 DEFAULT_FILTERS = {
@@ -58,32 +58,39 @@ def backtest():
     for label, years in periods.items():
         start_date = end_date - timedelta(days=365 * years)
         
-        # Obter dados históricos
+        # Obter dados históricos do Ibovespa
         ibov_data = yf.download(ibov, start=start_date, end=end_date)['Adj Close']
-        returns_ibov = (ibov_data[-1] / ibov_data[0] - 1) * 100
+        ibov_cumulative_return = (ibov_data / ibov_data.iloc[0]) * 100  # Rentabilidade acumulada do Ibov
 
-        returns_tickers = []
+        # Criar DataFrame para os retornos acumulados dos tickers
+        cumulative_returns = pd.DataFrame()
+
         for ticker in tickers:
             ticker_data = yf.download(ticker + ".SA", start=start_date, end=end_date)['Adj Close']
             if len(ticker_data) > 0:
-                returns_ticker = (ticker_data[-1] / ticker_data[0] - 1) * 100
-                returns_tickers.append(returns_ticker)
+                cumulative_return = (ticker_data / ticker_data.iloc[0]) * 100  # Rentabilidade acumulada
+                cumulative_returns[ticker] = cumulative_return
 
-        average_return = sum(returns_tickers) / len(returns_tickers) if returns_tickers else 0
+        # Calcular a média dos retornos acumulados dos tickers
+        average_cumulative_return = cumulative_returns.mean(axis=1)
 
         results[label] = {
-            "average_return": average_return,
-            "ibov_return": returns_ibov
+            "average_return": average_cumulative_return.iloc[-1],
+            "ibov_return": ibov_cumulative_return.iloc[-1]
         }
         
         # Plotar os resultados
         plt.figure(figsize=(10, 6))
-        labels = ['Average Return', 'Ibovespa Return']
-        returns = [average_return, returns_ibov]
-        plt.bar(labels, returns, color=['blue', 'green'])
-        plt.title(f"Backtest - {label}")
-        plt.ylabel("Return (%)")
-        plt.grid(True)
+        plt.style.use('dark_background')
+        plt.plot(average_cumulative_return, label="Average Return", color='green')
+        plt.plot(ibov_cumulative_return, label="Ibovespa Return", color='blue')
+        plt.title(f"Backtest - {label}", color='white')
+        plt.ylabel("Cumulative Return (%)", color='white')
+        plt.xlabel("Date", color='white')
+        plt.legend(facecolor='black', edgecolor='white', labelcolor='white')
+        plt.grid(True, color='gray', linestyle='--')
+        plt.tick_params(axis='x', colors='white')
+        plt.tick_params(axis='y', colors='white')
 
         # Salvar o gráfico em uma string base64
         buf = io.BytesIO()
